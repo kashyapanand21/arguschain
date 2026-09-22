@@ -1,0 +1,65 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Identity {
+  id              String   @id // Using the on-chain identityId (tokenId)
+  did             String   @unique
+  empCommitment   String   @unique
+  clearance       Int      // 0 PUBLIC, 1 RESTRICTED, 2 CONFIDENTIAL, 3 SECRET, 4 TOP_SECRET
+  status          String   // ACTIVE, SUSPENDED, REVOKED
+  issuedAt        DateTime
+  validUntil      DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  assets          Asset[]
+  roles           Role[]
+  aces            ACE[]
+}
+
+model Role {
+  id              String   @id @default(uuid())
+  roleId          Int      // ERC-1155 token ID: 1 (Admin), 2 (Manager), 3 (Auditor), 4 (User), 5 (Security Officer)
+  identityId      String
+  identity        Identity @relation(fields: [identityId], references: [id])
+  createdAt       DateTime @default(now())
+
+  @@unique([roleId, identityId])
+}
+
+model Asset {
+  id              String   @id // resourceId from the chain
+  contentHash     String   @unique
+  ownerId         String
+  owner           Identity @relation(fields: [ownerId], references: [id])
+  classification  Int      // 0 PUBLIC, ..., 4 TOP_SECRET
+  storageKey      String?  // The key used in Backblaze B2 (e.g., s3 object key)
+  encryptedDek    String?  // Data Encryption Key wrapped by KEK
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  aces            ACE[]
+}
+
+model ACE {
+  id              String   @id @default(uuid())
+  assetId         String
+  asset           Asset    @relation(fields: [assetId], references: [id])
+  identityId      String
+  identity        Identity @relation(fields: [identityId], references: [id])
+  permissions     Int      // Bitmask for permissions (e.g., READ=4, DOWNLOAD=8)
+  denyBits        Int      // Explicit deny bitmask
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([assetId, identityId])
+}
