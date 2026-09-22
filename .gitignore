@@ -2,6 +2,7 @@ node_modules/
 artifacts/
 cache/
 typechain-types/
-deployments/localhost*.json
-.env
 coverage/
+coverage.json
+.env
+.DS_Store

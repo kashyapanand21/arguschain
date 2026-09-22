@@ -1,6 +1,6 @@
 {
-  "name": "arguschain-contracts",
-  "version": "3.0.0",
+  "name": "arguschain-v4-contracts",
+  "version": "4.0.0",
   "private": true,
   "scripts": {
     "build": "hardhat compile",
