@@ -1,17 +1,16 @@
 import { ethers } from "hardhat";
 
 export const P = {
-  LIST: 1 << 0,
+  LIST:      1 << 0,
   READ_META: 1 << 1,
-  READ: 1 << 2,
-  DOWNLOAD: 1 << 3,
-  WRITE: 1 << 4,
-  CREATE: 1 << 5,
-  DELETE: 1 << 6,
-  SHARE: 1 << 7,
-  ADMIN: 1 << 8,
-  AUDIT: 1 << 9,
+  READ:      1 << 2,
+  DOWNLOAD:  1 << 3,
+  WRITE:     1 << 4,
+  SHARE:     1 << 5,
+  ADMIN:     1 << 6,
+  AUDIT:     1 << 7,
 };
+export const CONTENT_BITS = P.READ | P.DOWNLOAD | P.WRITE;
 
 export const CLASSIFICATION = {
   PUBLIC: 0,
@@ -21,66 +20,66 @@ export const CLASSIFICATION = {
   TOP_SECRET: 4,
 };
 
-export const PrincipalType = {
-  NONE: 0,
-  IDENTITY: 1,
-  DESIGNATION: 2,
-  GROUP: 3,
-  UNIT: 4,
+export const ROLE = {
+  ADMIN: 1,
+  MANAGER: 2,
+  AUDITOR: 3,
+  USER: 4,
+  SECURITY_OFFICER: 5,
 };
 
-export const ROOT = ethers.ZeroHash;
+export enum PrincipalType {
+  NONE = 0,
+  IDENTITY = 1,
+  ROLE = 2,
+}
 
-export function principalOf(type: number, id: bigint | number | string): string {
+export function principalOf(type: PrincipalType, id: bigint | number): string {
   return ethers.solidityPackedKeccak256(["uint8", "uint256"], [type, id]);
 }
 
 export const principals = {
   identity: (id: bigint | number) => principalOf(PrincipalType.IDENTITY, id),
-  designation: (id: bigint | number) => principalOf(PrincipalType.DESIGNATION, id),
-  group: (id: bigint | number) => principalOf(PrincipalType.GROUP, id),
-  unit: (unitId: string) => principalOf(PrincipalType.UNIT, BigInt(unitId)),
+  role: (roleId: bigint | number) => principalOf(PrincipalType.ROLE, roleId),
 };
 
-export const labelHash = (label: string) => ethers.keccak256(ethers.toUtf8Bytes(label));
-
-/** nodeId = keccak256(parent || labelHash) — the same fold the client performs. */
-export function nodeId(parent: string, label: string): string {
-  return ethers.solidityPackedKeccak256(["bytes32", "bytes32"], [parent, labelHash(label)]);
-}
-
-/** Fold a whole path: "/BEL/Ghaziabad/RADAR-X" -> one bytes32, zero RPC calls. */
-export function pathToNodeId(path: string): string {
-  return path
-    .split("/")
-    .filter(Boolean)
-    .reduce((parent, label) => nodeId(parent, label), ROOT);
-}
-
-export const unitId = (name: string) => ethers.keccak256(ethers.toUtf8Bytes(name));
-export const compartment = (name: string) => ethers.keccak256(ethers.toUtf8Bytes(name));
 export const justify = (text: string) => ethers.keccak256(ethers.toUtf8Bytes(text));
 export const empCommitment = (empNo: string, salt: string) =>
   ethers.keccak256(ethers.toUtf8Bytes(`${empNo}:${salt}`));
+export const contentHashOf = (text: string) => ethers.keccak256(ethers.toUtf8Bytes(text));
 
-/** The BEL designation ladder. Grade sets a ceiling; the ACL grants the access. */
-export const DESIGNATIONS = [
-  { id: 1, label: "Chairman & Managing Director", grade: 10, ceiling: 4, functional: false },
-  { id: 2, label: "Director", grade: 9, ceiling: 4, functional: false },
-  { id: 3, label: "Executive Director", grade: 8, ceiling: 3, functional: false },
-  { id: 4, label: "General Manager", grade: 7, ceiling: 3, functional: false },
-  { id: 5, label: "Deputy General Manager", grade: 6, ceiling: 3, functional: false },
-  { id: 6, label: "Senior Manager", grade: 5, ceiling: 2, functional: false },
-  { id: 7, label: "Manager", grade: 4, ceiling: 2, functional: false },
-  { id: 8, label: "Deputy Manager", grade: 3, ceiling: 2, functional: false },
-  { id: 9, label: "Senior Engineer", grade: 2, ceiling: 1, functional: false },
-  { id: 10, label: "Engineer", grade: 1, ceiling: 1, functional: false },
-  { id: 20, label: "Internal Auditor", grade: 0, ceiling: 4, functional: true },
-  { id: 21, label: "SOC Analyst", grade: 0, ceiling: 0, functional: true },
-  { id: 22, label: "Security Officer", grade: 0, ceiling: 0, functional: true },
-  { id: 23, label: "Asset Custodian", grade: 0, ceiling: 2, functional: true },
-];
+/// EIP-712 domain + types for ArgusIdentity.registerIdentity's Register message.
+export function registerDomain(chainId: number | bigint, verifyingContract: string) {
+  return { name: "ArgusIdentity", version: "4", chainId, verifyingContract };
+}
 
-export const SECURITY_OFFICER = 22;
-export const INTERNAL_AUDITOR = 20;
-export const ASSET_CUSTODIAN = 23;
+export const REGISTER_TYPES = {
+  Register: [
+    { name: "did", type: "address" },
+    { name: "empCommitment", type: "bytes32" },
+    { name: "clearance", type: "uint8" },
+    { name: "validUntil", type: "uint64" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+  ],
+};
+
+/// Signs the Register message with the wallet that currently owns `did` on the
+/// DID registry (normally the did address itself, unless its key has rotated).
+export async function signRegister(
+  didOwnerSigner: any,
+  identityContract: any,
+  did: string,
+  empCommitmentHash: string,
+  clearance: number,
+  validUntil: bigint,
+  nonce: bigint,
+  deadline: bigint
+): Promise<string> {
+  const network = await didOwnerSigner.provider.getNetwork();
+  const domain = registerDomain(network.chainId, await identityContract.getAddress());
+  const value = { did, empCommitment: empCommitmentHash, clearance, validUntil, nonce, deadline };
+  return didOwnerSigner.signTypedData(domain, REGISTER_TYPES, value);
+}
+
+export const FAR_FUTURE = 4102444800n; // 2100-01-01, used as a "no expiry" deadline in scripts/tests

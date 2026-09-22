@@ -1,10 +1,9 @@
 import { ethers, network } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
-import { DESIGNATIONS } from "./constants";
 
 async function main() {
-  const [deployer, relayer] = await ethers.getSigners();
+  const [deployer, relayer, oracle] = await ethers.getSigners();
   const admin = deployer.address;
   const relayerAddr = (relayer ?? deployer).address;
 
@@ -12,65 +11,63 @@ async function main() {
   console.log(`deployer: ${admin}`);
   console.log(`relayer : ${relayerAddr}`);
 
-  const identity = await (await ethers.getContractFactory("ArgusIdentity")).deploy(admin);
+  const didRegistry = await (await ethers.getContractFactory("EthereumDIDRegistry")).deploy();
+  await didRegistry.waitForDeployment();
+
+  const roles = await (await ethers.getContractFactory("RoleRegistry")).deploy(admin);
+  await roles.waitForDeployment();
+
+  const identity = await (
+    await ethers.getContractFactory("ArgusIdentity")
+  ).deploy(await didRegistry.getAddress(), await roles.getAddress(), admin);
   await identity.waitForDeployment();
 
-  const designations = await (
-    await ethers.getContractFactory("DesignationRegistry")
-  ).deploy(admin, await identity.getAddress());
-  await designations.waitForDeployment();
-
-  const groups = await (await ethers.getContractFactory("GroupRegistry")).deploy(admin);
-  await groups.waitForDeployment();
-
-  const resources = await (await ethers.getContractFactory("ResourceRegistry")).deploy(admin);
-  await resources.waitForDeployment();
+  const assets = await (
+    await ethers.getContractFactory("AssetNFT")
+  ).deploy(await identity.getAddress(), await roles.getAddress(), admin);
+  await assets.waitForDeployment();
 
   const access = await (
     await ethers.getContractFactory("AccessRegistry")
-  ).deploy(
-    admin,
-    await identity.getAddress(),
-    await designations.getAddress(),
-    await groups.getAddress(),
-    await resources.getAddress()
-  );
+  ).deploy(await identity.getAddress(), await roles.getAddress(), await assets.getAddress(), admin);
   await access.waitForDeployment();
 
   const workflow = await (
     await ethers.getContractFactory("GrantWorkflow")
   ).deploy(
-    admin,
     await identity.getAddress(),
-    await designations.getAddress(),
-    await resources.getAddress(),
-    await access.getAddress()
+    await roles.getAddress(),
+    await assets.getAddress(),
+    await access.getAddress(),
+    admin
   );
   await workflow.waitForDeployment();
 
   const audit = await (await ethers.getContractFactory("AuditAnchor")).deploy(admin);
   await audit.waitForDeployment();
 
-  // ---- wiring: this is the part that silently breaks everything if missed ----
-  await (await resources.setAuthorizer(await access.getAddress())).wait();
-  await (
-    await access.grantRole(await access.GRANT_EXECUTOR_ROLE(), await workflow.getAddress())
-  ).wait();
-  await (await identity.grantRole(await identity.SECURITY_OFFICER_ROLE(), admin)).wait();
+  // ---- wiring: the part that silently breaks everything if missed ----
+  await (await assets.setAuthorizer(await access.getAddress())).wait();
+  await (await access.grantRole(await access.ASSET_SEEDER_ROLE(), await assets.getAddress())).wait();
 
-  // relayer may submit transactions on a user's behalf after gateway PDP + step-up
-  await (await resources.grantRole(await resources.NODE_WRITER_ROLE(), relayerAddr)).wait();
+  await (await access.grantRole(await access.GRANT_EXECUTOR_ROLE(), await workflow.getAddress())).wait();
+  await (await assets.grantRole(await assets.GRANT_EXECUTOR_ROLE(), await workflow.getAddress())).wait();
+  await (await identity.grantRole(await identity.GRANT_EXECUTOR_ROLE(), await workflow.getAddress())).wait();
+  await (await roles.grantRole(await roles.GRANT_EXECUTOR_ROLE(), await workflow.getAddress())).wait();
+
+  // relayer: may submit ACL writes and workflow actions on a user's behalf
+  // after the gateway PDP has run and a step-up signature has been verified
   await (await access.grantRole(await access.ACL_WRITER_ROLE(), relayerAddr)).wait();
   await (await workflow.grantRole(await workflow.RELAYER_ROLE(), relayerAddr)).wait();
   await (await audit.grantRole(await audit.ANCHOR_ROLE(), relayerAddr)).wait();
 
-  // ---- designation ladder ----
-  for (const d of DESIGNATIONS) {
-    await (
-      await designations.defineDesignation(d.id, d.label, d.grade, d.ceiling, d.functional)
-    ).wait();
-  }
-  console.log(`defined ${DESIGNATIONS.length} designations`);
+  // ---- bootstrap the first Admin, then the deployer renounces its own key ----
+  await (await roles.bootstrap(admin)).wait();
+  console.log("bootstrapped first Admin ->", admin);
+  console.log(
+    "NOTE: on a real deployment, now call roles.renounceRole(DEFAULT_ADMIN_ROLE, deployer) " +
+      "so no privileged key outlives deployment (Section 11.1). Left granted here for the local demo."
+  );
 
   const out = {
     network: network.name,
@@ -78,11 +75,12 @@ async function main() {
     deployedAt: new Date().toISOString(),
     deployer: admin,
     relayer: relayerAddr,
+    oracle: oracle ? oracle.address : undefined,
     contracts: {
+      EthereumDIDRegistry: await didRegistry.getAddress(),
+      RoleRegistry: await roles.getAddress(),
       ArgusIdentity: await identity.getAddress(),
-      DesignationRegistry: await designations.getAddress(),
-      GroupRegistry: await groups.getAddress(),
-      ResourceRegistry: await resources.getAddress(),
+      AssetNFT: await assets.getAddress(),
       AccessRegistry: await access.getAddress(),
       GrantWorkflow: await workflow.getAddress(),
       AuditAnchor: await audit.getAddress(),
