@@ -15,7 +15,9 @@ app.use(express.json());
 import authRoutes from "./controllers/auth";
 import assetRoutes from "./controllers/assets";
 import auditRoutes from "./controllers/audit";
-import { contracts, provider } from "./chain";
+import { contracts, provider, addresses } from "./chain";
+import { prisma } from "./audit";
+import { requireAuth } from "./middleware/auth";
 
 // Routes
 app.get("/health", (req, res) => {
@@ -29,6 +31,14 @@ app.get("/health/chain", async (_req, res) => {
     contracts.identity.totalIssued(),
   ]);
   res.json({ block, assets: Number(minted), identities: Number(issued) });
+});
+// The browser signs its own mint transactions, so it needs the addresses.
+// Addresses are public on chain; no secret leaves the server here.
+app.get("/config", (_req, res) => res.json({ contracts: addresses, chainId: 31337 }));
+
+app.get("/decisions", requireAuth, async (_req, res) => {
+  const rows = await prisma.decision.findMany({ orderBy: { id: "desc" }, take: 100 });
+  res.json(rows.map((d) => ({ ...d, reasons: JSON.parse(d.reasons) })));
 });
 
 app.use("/auth", authRoutes);
