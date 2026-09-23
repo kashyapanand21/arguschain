@@ -29,8 +29,13 @@ async function main() {
 
   const path = process.argv[3];
   if (body.token && path) {
-    const r = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${body.token}` } });
-    console.log("\n", path, r.status, JSON.stringify(await r.json(), null, 2));
+    const headers: Record<string, string> = { Authorization: `Bearer ${body.token}` };
+    if (process.argv[4] === "stepup") headers["x-step-up"] = "verified";
+    const r = await fetch(`${API}${path}`, { headers });
+    const text = await r.text();
+    console.log("\n", path, r.status, text.slice(0, 500));
+      return;
+      console.log("\n", path, r.status, JSON.stringify(await r.json(), null, 2));
   }}
 
 main();

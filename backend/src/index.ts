@@ -14,6 +14,7 @@ app.use(express.json());
 
 import authRoutes from "./controllers/auth";
 import assetRoutes from "./controllers/assets";
+import auditRoutes from "./controllers/audit";
 import { contracts, provider } from "./chain";
 
 // Routes
@@ -32,6 +33,7 @@ app.get("/health/chain", async (_req, res) => {
 
 app.use("/auth", authRoutes);
 app.use("/assets", assetRoutes);
+app.use("/audit", auditRoutes);
 
 app.listen(PORT, () => {
   console.log(`[PEP API] ArgusChain v4 backend running on http://localhost:${PORT}`);
