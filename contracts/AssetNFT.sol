@@ -173,7 +173,19 @@ contract AssetNFT is ERC721, AccessControl {
         address newHolder = identity.controllerOf(toIdentity);
         _update(newHolder, tokenId, address(0)); // internal move; public transfer entry points stay blocked below
 
-        emit AssetTransferred(tokenId, fromIdentity, toIdentity, justificationHash);
+                emit AssetTransferred(tokenId, fromIdentity, toIdentity, justificationHash);
+
+        // Section 6.2: old owner's ACE is removed, new owner receives the owner default
+        if (address(authorizer) != address(0)) {
+            bytes32 rid = resourceIdOf(tokenId);
+            authorizer.revokeAce(rid, Principals.identity(fromIdentity), type(uint256).max);
+            authorizer.seedAce(
+                rid, Principals.identity(toIdentity),
+                Permissions.P_LIST | Permissions.P_READ_META | Permissions.P_READ | Permissions.P_DOWNLOAD |
+                    Permissions.P_WRITE | Permissions.P_SHARE,
+                justificationHash
+            );
+        }
     }
 
     function transferFrom(address, address, uint256) public pure override {

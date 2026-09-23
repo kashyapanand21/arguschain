@@ -74,7 +74,11 @@ contract AccessRegistry is AccessControl, IAuthorizer {
         uint64 notBefore, uint64 expiresAt, uint8 delegationDepth,
         uint256 grantedBy, bytes32 justificationHash
     ) external {
-        if (!hasRole(ACL_WRITER_ROLE, msg.sender)) revert Unauthorized();
+                if (
+            !hasRole(ACL_WRITER_ROLE, msg.sender) &&
+            !hasRole(GRANT_EXECUTOR_ROLE, msg.sender) &&
+            !hasRole(ASSET_SEEDER_ROLE, msg.sender) // AssetNFT, owner ACE handover on transfer
+        ) revert Unauthorized();
         if (principal == Principals.identity(grantedBy)) revert SelfGrantForbidden();
         if (!assets.exists(uint256(resourceId))) revert UnknownAsset();
         if (assets.classificationOf(uint256(resourceId)) >= CONFIDENTIAL) revert RequiresWorkflow();
@@ -136,7 +140,11 @@ contract AccessRegistry is AccessControl, IAuthorizer {
     }
 
     function revokeAce(bytes32 resourceId, bytes32 principal, uint256 revokedBy) external {
-        if (!hasRole(ACL_WRITER_ROLE, msg.sender) && !hasRole(GRANT_EXECUTOR_ROLE, msg.sender)) revert Unauthorized();
+                if (
+            !hasRole(ACL_WRITER_ROLE, msg.sender) &&
+            !hasRole(GRANT_EXECUTOR_ROLE, msg.sender) &&
+            !hasRole(ASSET_SEEDER_ROLE, msg.sender) // AssetNFT, owner ACE handover on transfer
+        ) revert Unauthorized();
         delete aces[resourceId][principal];
         emit AceRevoked(resourceId, principal, revokedBy);
     }

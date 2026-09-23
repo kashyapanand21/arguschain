@@ -1,10 +1,8 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,19 +13,26 @@ app.use(morgan("dev"));
 app.use(express.json());
 
 import authRoutes from "./controllers/auth";
-import fileRoutes from "./controllers/files";
-import { BlockchainIndexer } from "./indexer/index";
+import assetRoutes from "./controllers/assets";
+import { contracts, provider } from "./chain";
 
 // Routes
 app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+app.get("/health/chain", async (_req, res) => {
+  const [block, minted, issued] = await Promise.all([
+    provider.getBlockNumber(),
+    contracts.assets.totalMinted(),
+    contracts.identity.totalIssued(),
+  ]);
+  res.json({ block, assets: Number(minted), identities: Number(issued) });
+});
+
 app.use("/auth", authRoutes);
-app.use("/files", fileRoutes);
+app.use("/assets", assetRoutes);
 
 app.listen(PORT, () => {
   console.log(`[PEP API] ArgusChain v4 backend running on http://localhost:${PORT}`);
-  const indexer = new BlockchainIndexer();
-  indexer.start();
 });

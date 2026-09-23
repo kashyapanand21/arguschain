@@ -32,7 +32,8 @@ async function main() {
   const workflow = await ethers.getContractAt("GrantWorkflow", c.GrantWorkflow);
 
   const signers = await ethers.getSigners();
-  const [deployer] = signers;
+    const [deployer] = signers;
+  const officerSigner = signers[5]; 
 
   const people = [
     { key: "admin",   name: "R. Sharma (Admin)",            addr: signers[0], role: ROLE.ADMIN },
@@ -91,7 +92,7 @@ async function main() {
   await (await workflow.connect(deployer).proposeClearanceUplift(
     ids.manager, CLASSIFICATION.CONFIDENTIAL, justify("Manager needs budget access"), ids.admin
   )).wait();
-  await (await workflow.connect(deployer).approve(pid, ids.officer)).wait();
+  await (await workflow.connect(officerSigner).approve(pid, ids.officer)).wait();
   await (await workflow.connect(deployer).execute(pid)).wait();
   console.log(`clearance uplift executed: manager -> CONFIDENTIAL (proposal #${pid})`);
 
@@ -102,7 +103,7 @@ async function main() {
   await (await workflow.connect(deployer).proposeMint(
     ids.manager, budgetHash, CLASSIFICATION.CONFIDENTIAL, justify("RADAR-X budget, restricted circulation"), ids.admin
   )).wait();
-  await (await workflow.connect(deployer).approve(pid, ids.officer)).wait();
+  await (await workflow.connect(officerSigner).approve(pid, ids.officer)).wait();
   await (await workflow.connect(deployer).execute(pid)).wait();
   const budgetId = 3n;
   console.log(`minted budget.pdf (#${budgetId}, CONFIDENTIAL) to manager via GrantWorkflow (proposal #${pid})`);
@@ -127,7 +128,7 @@ async function main() {
     budgetId, principals.identity(ids.user), P.LIST | P.READ_META | P.READ, 0,
     budgetGrantExpiry, 0, justify("Budget review, time-boxed"), ids.admin
   )).wait();
-  await (await workflow.connect(deployer).approve(pid, ids.officer)).wait();
+  await (await workflow.connect(officerSigner).approve(pid, ids.officer)).wait();
   await (await workflow.connect(deployer).execute(pid)).wait();
   console.log(`workflow ACE: user -> READ on budget.pdf (proposal #${pid})`);
 

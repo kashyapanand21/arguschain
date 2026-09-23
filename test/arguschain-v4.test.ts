@@ -204,7 +204,12 @@ describe("ArgusChain v4 — contracts", () => {
       // only Admin role-holders do (Section 6.1 seeding, see AssetNFT._mintAsset)
       await f.assets.connect(f.admin).controlledTransfer(1, f.ID.bob, justify("handoff"));
       expect(await f.assets.ownerOf(1)).to.equal(f.bob.address);
-      expect(await f.assets.ownerIdentityOf(1)).to.equal(f.ID.bob);
+            expect(await f.assets.ownerIdentityOf(1)).to.equal(f.ID.bob);
+
+      // Section 6.2: access moves with ownership
+      const rid = ethers.zeroPadValue(ethers.toBeHex(1), 32);
+      expect(Number(await f.access.effectivePermissions(rid, f.bob.address)) & P.READ).to.equal(P.READ);
+      expect(Number(await f.access.effectivePermissions(rid, f.alice.address)) & P.READ).to.equal(0);
     });
   });
 
