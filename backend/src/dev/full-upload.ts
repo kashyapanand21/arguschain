@@ -57,4 +57,13 @@ async function main() {
   console.log(`\ntry: npx ts-node src/dev/login.ts <key> /assets/${tokenId}/content`);
 }
 
-main().catch((e) => { console.error(e.message); process.exit(1); });
+main().catch((e) => {
+  const selector = e?.data ?? e?.info?.error?.data;
+  if (selector) {
+    const parsed = contracts.assets.interface.parseError(selector);
+    console.error(`reverted: ${parsed?.name ?? selector}`);
+  } else {
+    console.error(e.message);
+  }
+  process.exit(1);
+});

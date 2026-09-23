@@ -112,11 +112,8 @@ router.post("/:id/link", requireAuth, async (req, res) => {
     return res.status(409).json({ code: "HASH_MISMATCH" }); // the chain is the authority
   }
   const { name, mimeType, size, contentHash, storagePath, wrappedDek } = req.body;
-  await prisma.storedFile.upsert({
-    where: { tokenId },
-    update: {},
-    create: { tokenId, name, mimeType, size, contentHash, storagePath, wrappedDek },
-  });
+    const row = { tokenId, name, mimeType, size, contentHash, storagePath, wrappedDek };
+  await prisma.storedFile.upsert({ where: { tokenId }, update: row, create: row });
   res.json({ ok: true });
 });
 router.get("/:id/content", requireAuth, async (req, res) => {
@@ -144,11 +141,26 @@ router.get("/:id/content", requireAuth, async (req, res) => {
   const file = await prisma.storedFile.findUnique({ where: { tokenId } });
   if (!file) return res.status(404).json({ code: "FILE_NOT_STORED" });
 
-  const plaintext = loadAndDecrypt(file.storagePath, file.wrappedDek);
-  const onChainHash = (await contracts.assets.assets(tokenId)).contentHash;
+    const onChainHash = (await contracts.assets.assets(tokenId)).contentHash;
+
+  // Two ways a tampered file shows up: the GCM auth tag fails (bytes changed in
+  // place), or it decrypts but the plaintext hash no longer matches the chain
+  // (the whole object was swapped). Both are the same incident.
+  let plaintext: Buffer;
+  try {
+    plaintext = loadAndDecrypt(file.storagePath, file.wrappedDek);
+    } catch (e: any) {
+    const missing = e?.code === "ENOENT"; // storage gone, not altered: a different incident
+    const code = missing ? "FILE_NOT_STORED" : "TAMPER_DETECTED";
+    await logDecision({ identityId, tokenId, action: "READ", reasonCode: code });
+    return res.status(missing ? 404 : 409).json({
+      code,
+      detail: missing ? "No stored ciphertext for this asset." : "Stored ciphertext failed integrity check.",
+    });
+  }
   if (sha256(plaintext).toLowerCase() !== onChainHash.toLowerCase()) {
     await logDecision({ identityId, tokenId, action: "READ", reasonCode: "TAMPER_DETECTED" });
-    return res.status(409).json({ code: "TAMPER_DETECTED" });
+    return res.status(409).json({ code: "TAMPER_DETECTED", detail: "File hash does not match the on-chain hash." });
   }
 
   await logDecision({ identityId, tokenId, action: "READ", reasonCode: "ALLOW", riskScore: risk.score, reasons: risk.reasons });
